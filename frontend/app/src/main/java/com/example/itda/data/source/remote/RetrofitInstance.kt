@@ -10,7 +10,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 object RetrofitInstance {
-    private const val BASE_URL = "http://35.216.102.140/api/v1/"
+    private const val BASE_URL = "http://10.0.2.2:8080/api/v1/"  // Android emulator → host localhost
     private var prefDataSource: PrefDataSource? = null
 
     fun init(dataSource: PrefDataSource) {

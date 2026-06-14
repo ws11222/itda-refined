@@ -18,3 +18,8 @@ class EmbeddingException : ProgramException(
     code = HttpStatus.INTERNAL_SERVER_ERROR,
     message = "Embedding dimension is invalid",
 )
+
+class EmbeddingUnavailableException : ProgramException(
+    code = HttpStatus.SERVICE_UNAVAILABLE,
+    message = "Embedding server is unavailable",
+)

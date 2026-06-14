@@ -3,6 +3,7 @@ package com.example.itda.embedding.service
 import com.example.itda.embedding.controller.EmbeddingRequest
 import com.example.itda.embedding.controller.EmbeddingResponse
 import com.example.itda.embedding.controller.EmbeddingStatusResponse
+import com.example.itda.program.EmbeddingUnavailableException
 import org.springframework.stereotype.Service
 import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.bodyToMono
@@ -33,5 +34,9 @@ class EmbeddingService(
         val response = getEmbedding(request)
 
         return response?.embedding?.toFloatArray()
+    }
+
+    fun getEmbeddingOrThrow(text: String): FloatArray {
+        return getEmbedding(text) ?: throw EmbeddingUnavailableException()
     }
 }

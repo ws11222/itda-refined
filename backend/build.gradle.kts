@@ -44,7 +44,7 @@ dependencies {
     // Database
     runtimeOnly("org.postgresql:postgresql")
     implementation("com.pgvector:pgvector:0.1.4")
-    implementation("com.google.cloud.sql:postgres-socket-factory:1.25.3")
+
     implementation("org.hibernate.orm:hibernate-vector:6.6.29.Final")
 
     // Test
@@ -61,6 +61,10 @@ dependencies {
     annotationProcessor("org.projectlombok:lombok")
     compileOnly("org.projectlombok:lombok")
     implementation("org.springframework.boot:spring-boot-starter-webflux")
+
+    // Observability
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("io.micrometer:micrometer-registry-prometheus")
 }
 
 kotlin {

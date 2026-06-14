@@ -1,6 +1,7 @@
 import json
 import os
 import argparse
+import time
 
 from datetime import datetime, timezone
 from pathlib import Path
@@ -55,6 +56,8 @@ def create_parser():
     parser.add_argument("--db-commit-batch-size", type=int, default=32)
     parser.add_argument("--db-min-pool-size", type=int, default=1)
     parser.add_argument("--db-max-pool-size", type=int, default=3)
+    parser.add_argument("--trim-offset", type=int, default=0, help="trim 시작 인덱스 (0-based)")
+    parser.add_argument("--trim-limit", type=int, default=0, help="trim 처리 건수 (0=전체)")
 
     return parser
 
@@ -108,17 +111,28 @@ def do_load(args):
 
 
 def do_trim(args) -> List[Dict[str, Any]]:
-    print("[*] Start trimming...")
+    offset = args.trim_offset
+    limit = args.trim_limit
+
+    print(f"[*] Start trimming... (offset={offset}, limit={limit or 'all'})")
 
     count = 0
-    total_bytes = raw_path.stat().st_size
+    skipped = 0
+    processed = 0
+
+    # append 모드: offset > 0이면 기존 파일에 이어쓰기
+    write_mode = "a" if offset > 0 else "w"
 
     with raw_path.open("r", encoding="utf-8") as f_in, trimmed_path.open(
-        "w", encoding="utf-8"
-    ) as f_out, trimmed_path_ts.open("w", encoding="utf-8") as f_out_ts, tqdm(
-        total=total_bytes, desc="Trimming Programs", unit="B", unit_scale=True
-    ) as pbar:
-        for line in f_in:
+        write_mode, encoding="utf-8"
+    ) as f_out, trimmed_path_ts.open(write_mode, encoding="utf-8") as f_out_ts:
+        for i, line in enumerate(f_in):
+            if i < offset:
+                skipped += 1
+                continue
+            if limit and processed >= limit:
+                break
+
             raw_program = json.loads(line)
             result = graph.invoke({"raw_program": raw_program})
 
@@ -128,11 +142,13 @@ def do_trim(args) -> List[Dict[str, Any]]:
             if is_valid:
                 json_string = json.dumps(program, ensure_ascii=False) + "\n"
                 f_out.write(json_string)
+                f_out.flush()
                 f_out_ts.write(json_string)
+                f_out_ts.flush()
                 count += 1
-            pbar.update(len(line.encode("utf-8")))
+            processed += 1
 
-        print(f"Total {count} programs are trimmed.\n")
+        print(f"Total {count} programs are trimmed (skipped={skipped}, processed={processed}).\n")
 
 
 def do_vectorize(args):
@@ -233,25 +249,32 @@ def do_save(args):
     print(f"Total {count} programs are saved to DB.\n")
 
 
+def timed(stage_name, func, args):
+    start = time.time()
+    func(args)
+    elapsed = time.time() - start
+    print(f"[{stage_name}] 완료 — {elapsed:.1f}s\n")
+
+
 def main():
     parser = create_parser()
     args = parser.parse_args()
 
     mode = args.mode
 
-    if mode == "load":
-        do_load(args)
-    elif mode == "trim":
-        do_trim(args)
-    elif mode == "vectorize":
-        do_vectorize(args)
-    elif mode == "save":
-        do_save(args)
-    elif mode == "all":
-        do_load(args)
-        do_trim(args)
-        do_vectorize(args)
-        do_save(args)
+    stages = {
+        "load": ("Load", do_load),
+        "trim": ("Trim", do_trim),
+        "vectorize": ("Vectorize", do_vectorize),
+        "save": ("Save", do_save),
+    }
+
+    if mode == "all":
+        for name, func in stages.values():
+            timed(name, func, args)
+    else:
+        name, func = stages[mode]
+        timed(name, func, args)
 
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ class PostgresManager:
         )
 
         self.insert_sql = """
-            INSERT INTO program_pending (
+            INSERT INTO program (
                 uuid, title, preview, summary, details, application_method, 
                 apply_url, reference_url,
                 eligibility_gender, eligibility_min_age, eligibility_max_age,

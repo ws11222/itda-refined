@@ -9,3 +9,20 @@
 
 **/docker-compose.override.yml
 
+CLAUDE.md
+**/venv
+**/requirements-local.txt
+
+# thesis
+thesis/
+*.hwp
+*.pdf
+
+# AI tools
+AGENTS.md
+.claude/
+
+# Load test artifacts
+/load-test/builds/
+/load-test/results/
+/.loadtest-worktrees/
