@@ -3,7 +3,6 @@ package com.example.itda.feedCache.service
 import com.example.itda.feedCache.persistence.FeedCacheEntity
 import com.example.itda.feedCache.persistence.FeedCacheItem
 import com.example.itda.feedCache.persistence.FeedCacheRepository
-import com.example.itda.program.EmbeddingException
 import com.example.itda.program.config.AppConstants
 import com.example.itda.program.persistence.BookmarkRepository
 import com.example.itda.program.persistence.ProgramLikeRepository
@@ -57,7 +56,6 @@ class FeedCacheService(
     @Transactional
     fun generateFeedCache(userId: String): Map<String, List<FeedCacheItem>> {
         val userEntity = userRepository.findByIdOrNull(userId) ?: throw UserNotFoundException()
-        val programs = programRepository.findAllByUserInfo(userId)
 
         val keywords = listOf("장애", "탈북", "북한")
 
@@ -71,24 +69,32 @@ class FeedCacheService(
         val preferenceWithoutSeeLessEmbedding =
             getPreferenceWithoutSeeLessEmbedding(userEmbedding, likesEmbedding, bookmarksEmbedding)
 
+        val scoreRows =
+            programRepository.findFeedScoresByUserInfo(
+                userId = userId,
+                pref = preferenceEmbedding.toPgVectorLiteral(),
+                prefNoSeeless = preferenceWithoutSeeLessEmbedding.toPgVectorLiteral(),
+                likes = likesEmbedding.toPgVectorLiteral(),
+                bookmarks = bookmarksEmbedding.toPgVectorLiteral(),
+            )
+
         val categoryFeeds = getEmptyCategoryFeeds()
 
         val feedPairs =
-            programs.map { program ->
-                val programId = program.id
-                val programEmbedding = program.embedding
+            scoreRows.map { row ->
+                val id = (row[0] as Number).toLong()
+                val category = ProgramCategory.valueOf(row[1] as String)
+                val title = row[2] as String
+                var score = (row[3] as Number).toFloat()
+                val denom = (row[4] as Number).toFloat()
+                val likeDot = (row[5] as Number).toFloat()
+                val bookmarkDot = (row[6] as Number).toFloat()
 
-                var score = dotProduct(programEmbedding, preferenceEmbedding)
+                val multiplier = if (denom != 0f) (100f / denom) else 0f
+                val likeContribution = (W_L * likeDot * multiplier).roundToInt()
+                val bookmarkContribution = (W_B * bookmarkDot * multiplier).roundToInt()
 
-                val denominator = dotProduct(programEmbedding, preferenceWithoutSeeLessEmbedding)
-                val multiplier = if (denominator != 0f) (100f / denominator) else 0f
-
-                val likeContribution =
-                    (W_L * dotProduct(programEmbedding, likesEmbedding) * multiplier).roundToInt()
-                val bookmarkContribution =
-                    (W_B * dotProduct(programEmbedding, bookmarksEmbedding) * multiplier).roundToInt()
-
-                val targets = keywords.filter { keyword -> keyword in program.title }
+                val targets = keywords.filter { keyword -> keyword in title }
                 val userMatchesAllTargets =
                     targets.all { target ->
                         userEntity.tags.any { tag -> target in tag.name }
@@ -97,7 +103,7 @@ class FeedCacheService(
                     score -= CACHE_CORRECTION
                 }
 
-                Pair(FeedCacheItem(programId, score, likeContribution, bookmarkContribution), program.category)
+                Pair(FeedCacheItem(id, score, likeContribution, bookmarkContribution), category)
             }.sortedByDescending { it.first.score }
 
         feedPairs.forEach { pair ->
@@ -116,6 +122,9 @@ class FeedCacheService(
 
         return feedCache.categoryFeeds
     }
+
+    private fun FloatArray.toPgVectorLiteral(): String =
+        joinToString(separator = ",", prefix = "[", postfix = "]")
 
     @Transactional(readOnly = true)
     fun getLikesEmbedding(userId: String): FloatArray {
@@ -208,23 +217,6 @@ class FeedCacheService(
         }
 
         return categoryFeeds
-    }
-
-    fun dotProduct(
-        vector1: FloatArray,
-        vector2: FloatArray,
-    ): Float {
-        if (vector1.size != EMBEDDING_DIMENSION || vector2.size != EMBEDDING_DIMENSION) {
-            throw EmbeddingException()
-        }
-
-        var result = 0f
-
-        for (i in 0 until EMBEDDING_DIMENSION) {
-            result += (vector1[i] * vector2[i])
-        }
-
-        return result
     }
 
     fun calculateAverageVector(vectors: List<FloatArray>): FloatArray {

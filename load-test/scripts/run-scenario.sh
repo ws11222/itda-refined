@@ -25,6 +25,7 @@ case "$SCENARIO" in
   s3) export DELAY_MODE=fixed; export DELAY_MS=5000;  SCRIPT=s3-degradation.js ;;
   s4) export DELAY_MODE=fixed; export DELAY_MS=30000; SCRIPT=s4-outage.js ;;
   s5) export DELAY_MODE=fixed; export DELAY_MS=5000;  SCRIPT=s5-blast-radius.js ;;
+  s6) export DELAY_MODE=fixed; export DELAY_MS=200;   SCRIPT=s6-cache-miss.js ;;
   *) echo "unknown scenario $SCENARIO" >&2; exit 1 ;;
 esac
 

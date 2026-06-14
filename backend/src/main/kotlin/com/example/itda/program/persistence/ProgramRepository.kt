@@ -10,36 +10,49 @@ import org.springframework.data.repository.query.Param
 interface ProgramRepository : JpaRepository<ProgramEntity, Long> {
     @Query(
         value = """
-        SELECT p.*
+        SELECT
+            p.id                                                          AS id,
+            p.category                                                    AS category,
+            p.title                                                       AS title,
+            (-(p.embedding <#> CAST(:pref AS vector)))::float8            AS score,
+            (-(p.embedding <#> CAST(:prefNoSeeless AS vector)))::float8   AS denom,
+            (-(p.embedding <#> CAST(:likes AS vector)))::float8           AS like_dot,
+            (-(p.embedding <#> CAST(:bookmarks AS vector)))::float8       AS bookmark_dot
         FROM program p
         JOIN "user" u ON u.id = :userId
-        AND (p.eligibility_gender IS NULL OR p.eligibility_gender = u.gender)
-        AND (p.eligibility_marital_status is NULL OR p.eligibility_marital_status = u.marital_status)
-        AND (p.eligibility_education is NULL OR p.eligibility_education = u.education_level)
-        AND (p.eligibility_min_household is NULL OR p.eligibility_min_household <= u.household_size)
-        AND (p.eligibility_max_household is NULL OR p.eligibility_max_household >= u.household_size)
-        AND (p.eligibility_min_income is NULL OR p.eligibility_min_income <= u.household_income)
-        AND (p.eligibility_max_income is NULL OR p.eligibility_max_income >= u.household_income)
-        AND (p.eligibility_employment is NULL OR p.eligibility_employment = u.employment_status)
-        AND (p.eligibility_min_age IS NULL OR u.birth_date IS NULL OR p.eligibility_min_age <= DATE_PART('year', AGE(CURRENT_DATE, u.birth_date)))
-        AND (p.eligibility_max_age IS NULL OR u.birth_date IS NULL OR p.eligibility_max_age >= DATE_PART('year', AGE(CURRENT_DATE, u.birth_date)))
-        
+            AND (p.eligibility_gender IS NULL OR p.eligibility_gender = u.gender)
+            AND (p.eligibility_marital_status IS NULL OR p.eligibility_marital_status = u.marital_status)
+            AND (p.eligibility_education IS NULL OR p.eligibility_education = u.education_level)
+            AND (p.eligibility_min_household IS NULL OR p.eligibility_min_household <= u.household_size)
+            AND (p.eligibility_max_household IS NULL OR p.eligibility_max_household >= u.household_size)
+            AND (p.eligibility_min_income IS NULL OR p.eligibility_min_income <= u.household_income)
+            AND (p.eligibility_max_income IS NULL OR p.eligibility_max_income >= u.household_income)
+            AND (p.eligibility_employment IS NULL OR p.eligibility_employment = u.employment_status)
+            AND (p.eligibility_min_age IS NULL OR u.birth_date IS NULL OR p.eligibility_min_age <= DATE_PART('year', AGE(CURRENT_DATE, u.birth_date)))
+            AND (p.eligibility_max_age IS NULL OR u.birth_date IS NULL OR p.eligibility_max_age >= DATE_PART('year', AGE(CURRENT_DATE, u.birth_date)))
         LEFT JOIN postcode_mapping pm ON pm.postcode_prefix = SUBSTRING(u.postcode, 1, 3)
         WHERE (
             p.operating_entity_type = 'CENTRAL'
             OR (
-                p.operating_entity_type = 'LOCAL' 
+                p.operating_entity_type = 'LOCAL'
                 AND (
-                    p.eligibility_region = pm.region 
-                    OR 
-                    p.eligibility_region = pm.region_major
+                    p.eligibility_region = pm.region
+                    OR p.eligibility_region = pm.region_major
                 )
             )
         )
+        ORDER BY score DESC
         """,
         nativeQuery = true,
     )
-    fun findAllByUserInfo(userId: String): List<ProgramEntity>
+    fun findFeedScoresByUserInfo(
+        @Param("userId") userId: String,
+        @Param("pref") pref: String,
+        @Param("prefNoSeeless") prefNoSeeless: String,
+        @Param("likes") likes: String,
+        @Param("bookmarks") bookmarks: String,
+    ): List<Array<Any>>
+
 
     @Query(
         """

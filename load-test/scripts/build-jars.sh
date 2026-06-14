@@ -42,8 +42,11 @@ build_from_ref() {
   build_from_dir "$wt" "$label"
 }
 
-build_from_ref main before
-build_from_ref refactor/async-embedding-refresh after
+AFTER_REF=${AFTER_REF:-$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD)}
+BEFORE_REF=${BEFORE_REF:-main}
+
+build_from_ref "$BEFORE_REF" before
+build_from_ref "$AFTER_REF" after
 
 echo ""
 echo "Done. Jars in $BUILDS_DIR:"

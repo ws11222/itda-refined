@@ -23,7 +23,8 @@
 | S2 Saturation | 부하 증가 | 50 | 200ms | 풀 한계점 탐색 |
 | S3 Degradation | 외부 서비스 지연 | 10 | 5s | 외부 지연이 우리 API SLO를 침범하는가 |
 | S4 Outage | 외부 서비스 다운 | 10 | 30s (>timeout 10s) | 외부 장애가 우리 API에 격리되는가 |
-| **S5 Blast Radius** | 외부 지연 중 무관한 GET | 10 writer + 5 reader | 5s | **핵심 비교** — 외부 지연이 무관한 API까지 전파되는가 (DB 커넥션 풀 고갈) |
+| **S5 Blast Radius** | 외부 지연 중 무관한 GET | 10 writer + 5 reader | 5s | 외부 지연이 무관한 API까지 전파되는가 (DB 커넥션 풀 고갈) |
+| **S6 Cache Miss** | 피드 캐시 재생성 부하 | 10 (shared 300 iter) | 200ms (무관) | 추천 점수 계산을 JVM에서 Postgres로 푸시다운한 효과 |
 
 ### 수치 정당화
 
@@ -113,6 +114,30 @@ bash load-test/scripts/run-scenario.sh after  s3    # 개선 후, S3
 개선 후 S3/S4에서 사용자는 즉시 200 OK를 받지만, 임베딩 갱신은 백그라운드에서 timeout(10s) 후 실패하므로 **그 사용자의 임베딩은 일시적으로 stale 상태**가 됨. 다음 프로필 업데이트 시 자연 복구.
 
 S5의 writer 측 에러율(약 19%)은 측정 인공물 — 부하 테스트에서 `__VU % token_count` 매핑으로 일부 토큰을 여러 VU가 공유하며 동일 사용자에 대한 동시 업데이트가 발생, `TagEntity` 수준의 `ObjectOptimisticLockingFailureException`이 발생한 결과. 본 평가의 관심은 무관한 reader 측 영향이므로 별도 보정 없이 수집된 값을 그대로 보고함.
+
+### S6 Cache Miss — pgvector 푸시다운 효과
+
+피드 캐시 재생성 (`generateFeedCache`) 경로의 단위 비용을 측정. 사용자 300명이 각자 한 번씩 첫 피드를 요청 (shared-iterations executor) → 300회 cache miss → 매 호출마다 후보 정책에 대해 추천 점수 계산.
+
+**개선 전 (`refactor/async-embedding-refresh` HEAD)**: JVM이 program 엔티티 전체를 hydrate한 뒤 프로그램당 4회 dot product 계산.
+**개선 후 (`refactor/pgvector-pushdown-feed-cache`)**: 단일 native query에 `<#>` 연산자를 사용해 4개 inner product를 컬럼으로 추가, score/denom/like_dot/bookmark_dot 모두 Postgres에서 계산.
+
+| 지표 | Before | After | 개선 |
+|---|---|---|---|
+| `GET /programs` p50 | 60ms | **28ms** | 2.1× |
+| **`GET /programs` p95** | **170ms** | **99ms** | **1.7×** |
+| `GET /programs` p99 | 460ms | 225ms | 2.0× |
+| 평균 응답 시간 | 90ms | 38ms | 2.4× |
+| 처리량 (req/s) | 14.8 | 16.4 | +11% |
+
+**해석**:
+1. **데이터 이동 제거**: 개선 전은 program 한 행당 vector(1024) + 다수 텍스트 컬럼을 JVM으로 끌어와 `ProgramEntity` 로 hydrate. 개선 후는 id/카테고리/제목/4개 float 만 받음 → 행당 페이로드 95%↓.
+2. **CPU 이동**: 벡터 내적이 JVM 바이트코드에서 → Postgres C 구현(SIMD) 으로. 1024-dim 내적이 단일 명령어 시퀀스에 더 가까워짐.
+3. **JPA hydration 비용 제거**: 후보 program 객체를 만들지 않음.
+
+**측정 한계**:
+- 테스트 환경에서 사용자가 freshly signed up 상태 (postcode/birthDate 등 null) → eligibility 필터 통과 정책 수가 ~93개로 제한적. 실제 운영의 풍부한 프로필에선 후보 수가 더 많고 개선폭도 커질 것으로 예상.
+- 단일 호스트 측정이라 DB 전송 비용이 (Unix loopback) 매우 낮음. 운영처럼 DB가 별도 호스트면 데이터 이동 감소(95%↓)의 효과가 더 두드러짐.
 
 ## 참고
 
