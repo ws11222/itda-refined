@@ -4,6 +4,9 @@ spring:
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+    hikari:
+      pool-name: itda-hikari
+      register-mbeans: true
   jpa:
     hibernate:
       ddl-auto: update
@@ -11,3 +14,17 @@ spring:
     properties:
       hibernate:
         format_sql: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      percentiles:
+        http.server.requests: 0.5, 0.95, 0.99
+    tags:
+      application: itda-backend

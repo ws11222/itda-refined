@@ -61,6 +61,10 @@ dependencies {
     annotationProcessor("org.projectlombok:lombok")
     compileOnly("org.projectlombok:lombok")
     implementation("org.springframework.boot:spring-boot-starter-webflux")
+
+    // Observability
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("io.micrometer:micrometer-registry-prometheus")
 }
 
 kotlin {

@@ -1,0 +1,41 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: loadtest-db
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: itda
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: devpw
+    volumes:
+      - loadtest-pgdata:/var/lib/postgresql/data
+      - ../backend/src/main/resources/db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dev -d itda"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  mock-embedding:
+    build: ./mock-embedding-server
+    container_name: loadtest-mock-embedding
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      API_KEY: local-dev-key
+      DELAY_MODE: ${DELAY_MODE:-fixed}
+      DELAY_MS: ${DELAY_MS:-200}
+      DELAY_RANDOM_MEDIAN_MS: ${DELAY_RANDOM_MEDIAN_MS:-300}
+      DELAY_RANDOM_SIGMA: ${DELAY_RANDOM_SIGMA:-0.6}
+      DELAY_OUTAGE_MS: ${DELAY_OUTAGE_MS:-30000}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,os; urllib.request.urlopen(urllib.request.Request('http://localhost:8000/v1/health', headers={'X-API-Key': os.environ['API_KEY']}))\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  loadtest-pgdata:

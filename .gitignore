@@ -21,3 +21,8 @@ thesis/
 # AI tools
 AGENTS.md
 .claude/
+
+# Load test artifacts
+/load-test/builds/
+/load-test/results/
+/.loadtest-worktrees/
